@@ -1,23 +1,57 @@
 ## Shortlist Experiments
 
-Minimal setup to reproduce the A1 shortlist sampling simulations described in `design.md`.
+Minimal setup to reproduce the A1 shortlist sampling simulations described in `design.md` and the experimental plan in `detailed_exp_plan.md`.
 
 ## Quick Start
 
+### Original Simulation Script
 ```bash
 python run_a1_simulation.py --help
 python run_a1_simulation.py --replications 100 --debug-every 25
 ```
 
-The script prints configuration details, runs uniform, Thompson, and A1 sampling baselines, and reports shortlist success rates.
+### New Experiment Script (Recommended)
+```bash
+# Quick test with reduced parameters (modify DEFAULT_CONFIG in the file)
+python run_experiment.py
+
+# Or override via command-line
+python run_experiment.py --replications 10 --budget 200
+
+# Full experiment per detailed_exp_plan.md
+python run_experiment.py --replications 1000 --budget 1000
+```
+
+The new script (`run_experiment.py`) implements the full experimental plan with 6 policies, time-series logging, and CSV/JSON output files.
+
+## Code Structure
+
+- **`algorithms.py`**: Core algorithm implementations (extracted for reuse)
+  - Uniform Allocation
+  - Thompson Sampling
+  - A1 Sampling
+  - Top-Two Thompson Sampling (TopTwoTS)
+  - Helper functions for posterior computation and shortlist selection
+
+- **`run_a1_simulation.py`**: Original simulation script
+  - Compares 3 policies: Uniform, Thompson Sampling, A1
+  - Interactive output with statistical tests
+  - See details below
+
+- **`run_experiment.py`**: New experiment script (per `detailed_exp_plan.md`)
+  - Runs 6 policies: Uniform, TS, A1 (Standard), A1 (Optimal), TopTwoTS (Standard), TopTwoTS (Optimal)
+  - Uses "hard" instance: (1, 0.9, ..., 0.9, 0, ..., 0)
+  - Collects time-series data for learning curves
+  - Outputs: `results_summary.csv`, `trajectory_data.json`, `allocation_data.csv`
+  - Easy parameter modification via `DEFAULT_CONFIG` at top of file
 
 ## Implementation Summary
 
-`run_a1_simulation.py` instantiates a Gaussian multi-armed bandit with a warm-start prior, then:
-- updates posterior means/variances per pull using the uninformative-prior formulas from `design.md`
-- simulates three allocation rules (uniform, Thompson sampling, A1 Algorithm 1)
-- repeats each policy for the requested number of replications
-- counts how often the final shortlist (top posterior means) contains the true best arm
+Both scripts instantiate a Gaussian multi-armed bandit with a warm-start prior, then:
+- update posterior means/variances per pull using the uninformative-prior formulas from `design.md`
+- simulate allocation rules (uniform, Thompson sampling, A1, TopTwoTS)
+- repeat each policy for the requested number of replications
+- count how often the final shortlist (top posterior means) contains the true best arm
 
 The objective is to compare shortlist success probabilities under identical budgets and noise assumptions.
 
@@ -34,12 +68,37 @@ The objective is to compare shortlist success probabilities under identical budg
 - **Replications:** Repeat the entire run `--replications` times; each replication regenerates the warm start.
 - **Success metric:** After budget exhaustion, select shortlist of size `m` via highest posterior means and check if it contains the true best arm.
 
+## Script-Specific Details
+
+### `run_a1_simulation.py`
+- **Policies:** Uniform, Thompson Sampling, A1 Sampling
+- **Default parameters:** `k=10`, `m=3`, `budget=100`
+- **True means:** Defaults to example from `design.md`; pass `--true-means` to override
+- **Output:** Console output with success rates and statistical tests
+
+### `run_experiment.py`
+- **Policies:** Uniform, TS, A1 (Standard), A1 (Optimal), TopTwoTS (Standard), TopTwoTS (Optimal)
+- **Default parameters:** `k=100`, `m=10`, `budget=1000`, `replications=1000` (modify `DEFAULT_CONFIG` for quick testing)
+- **Instance:** Hard instance `(1, 0.9, ..., 0.9, 0, ..., 0)` per `detailed_exp_plan.md`
+- **Output files:**
+  - `results_summary.csv`: Final success rates and regret for all policies
+  - `trajectory_data.json`: Time-series data for learning curves
+  - `allocation_data.csv`: Pull counts per arm group (best, distractors, noise)
+- **Quick testing:** Edit `DEFAULT_CONFIG` dictionary at top of file to reduce `replications`/`budget` for faster runs
+
 ## Defaults
 
+**`run_a1_simulation.py`:**
 - Arms `k=10`, shortlist size `m=3`
 - Budget includes the `k` warm-start pulls
 - Reward variance `σ²=1.0`
 - True means default to the example in `design.md`; pass `--true-means` to override
 
-See `design.md` for the theoretical motivation. No additional documentation is maintained beyond the essentials here.
+**`run_experiment.py`:**
+- Arms `k=100`, shortlist size `m=10`, budget `1000`
+- Reward variance `σ²=1.0`
+- Replications `1000` (reduce in `DEFAULT_CONFIG` for quick testing)
+- Hard instance with difficulty parameter `x=0.9`
+
+See `design.md` for the theoretical motivation and `detailed_exp_plan.md` for the full experimental plan.
 
