@@ -1,5 +1,7 @@
 ## Shortlist Experiments
 
+![Posterior Evolution](figure3_posterior_evolution.png)
+
 Minimal setup to reproduce the A1 shortlist sampling simulations described in `design.md` and the experimental plan in `detailed_exp_plan.md`.
 
 ## Quick Start
