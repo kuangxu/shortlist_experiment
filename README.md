@@ -39,7 +39,7 @@ The new script (`run_experiment.py`) implements the full experimental plan with 
   - See details below
 
 - **`run_experiment.py`**: New experiment script (per `detailed_exp_plan.md`)
-  - Runs 6 policies: Uniform, TS, A1 (Standard), A1 (Optimal), TopTwoTS (Standard), TopTwoTS (Optimal)
+  - Runs 6 policies: Uniform, TS, A1 (Standard), A1 (SqrtK), TopTwoTS (Standard), TopTwoTS (SqrtK)
   - Uses "hard" instance: (1, 0.9, ..., 0.9, 0, ..., 0)
   - Collects time-series data for learning curves
   - Outputs: `results_summary.csv`, `trajectory_data.json`, `allocation_data.csv`
@@ -77,7 +77,7 @@ The objective is to compare shortlist success probabilities under identical budg
 - **Output:** Console output with success rates and statistical tests
 
 ### `run_experiment.py`
-- **Policies:** Uniform, TS, A1 (Standard), A1 (Optimal), TopTwoTS (Standard), TopTwoTS (Optimal)
+- **Policies:** Uniform, TS, A1 (Standard), A1 (SqrtK), TopTwoTS (Standard), TopTwoTS (SqrtK)
 - **Default parameters:** `k=100`, `m=10`, `budget=1000`, `replications=1000` (modify `DEFAULT_CONFIG` for quick testing)
 - **Instance:** Hard instance `(1, 0.9, ..., 0.9, 0, ..., 0)` per `detailed_exp_plan.md`
 - **Output files:**

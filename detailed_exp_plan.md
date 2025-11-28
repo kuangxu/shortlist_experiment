@@ -36,16 +36,16 @@ We will simulate six distinct policy configurations.
 | **Uniform** | N/A | Uniform Random Allocation. |
 | **Thompson Sampling (TS)** | N/A | Standard greedy TS (select arm with highest posterior sample). |
 | **A1 (Standard)** | $0.5$ | A1 sampling with parameter $(1/2, 0, \dots, 0)$. |
-| **A1 (Optimal)** | $\beta^*$ | A1 sampling with derived worst-case parameter. |
+| **A1 (SqrtK)** | $\beta^*$ | A1 sampling with parameter derived from $\sqrt{k-1}$ formula. |
 | **TopTwoTS (Standard)** | $0.5$ | Top-Two Thompson Sampling with parameter $1/2$. |
-| **TopTwoTS (Optimal)** | $\beta^*$ | Top-Two TS with derived worst-case parameter. |
+| **TopTwoTS (SqrtK)** | $\beta^*$ | Top-Two TS with parameter derived from $\sqrt{k-1}$ formula. |
 
 ### Parameter Calculation
-The worst-case parameter $\beta^*$ (labeled "Optimal" above) is derived as:
+The parameter $\beta^*$ is derived as:
 $$\beta^* = \frac{1 + \sqrt{k-1}}{1 + 3\sqrt{k-1}}$$
 For $k=100$:
 $$\beta^* = \frac{1 + \sqrt{99}}{1 + 3\sqrt{99}} \approx \frac{10.95}{30.85} \approx 0.355$$
-This parameter applies to both the A1 "Optimal" and TopTwoTS "Optimal" variants.
+This parameter applies to both the A1 "SqrtK" and TopTwoTS "SqrtK" variants.
 
 ---
 
@@ -93,13 +93,13 @@ The simulation script should generate:
 * **X-Axis:** Budget consumed ($0$ to $1000$).
 * **Y-Axis:** Probability of including Best Arm in Shortlist.
 * **Content:** 6 curves (one for each policy).
-* **Hypothesis:** A1 (Optimal) should approach 1.0 faster than TS and Uniform.
+* **Hypothesis:** A1 (SqrtK) should approach 1.0 faster than TS and Uniform.
 
 ### Figure 2: Allocation Efficiency
 * **Type:** Grouped Bar Chart.
 * **Groups:** Best Arm, Distractor Arms, Noise Arms.
 * **Y-Axis:** Average Sample Count.
-* **Content:** Bars for TS, A1 (Standard), A1 (Optimal).
+* **Content:** Bars for TS, A1 (Standard), A1 (SqrtK).
 * **Hypothesis:** A1 should suppress sampling of "Noise" arms faster than Uniform, while distinguishing "Best" from "Distractor" more efficiently than standard TS.
 
 ### Figure 3: Posterior Evolution (Single Path)

@@ -2,7 +2,7 @@
 Simulation script for shortlist selection experiments.
 
 This script implements the experimental plan from detailed_exp_plan.md:
-- Runs 6 policies: Uniform, TS, A1 (Standard), A1 (Optimal), TopTwoTS (Standard), TopTwoTS (Optimal)
+- Runs 6 policies: Uniform, TS, A1 (Standard), A1 (SqrtK), TopTwoTS (Standard), TopTwoTS (SqrtK)
 - Uses the "hard" instance: (1, 0.9, ..., 0.9, 0, ..., 0) with k=100, m=10, budget=1000
 - Collects time-series data for learning curves
 - Outputs results to CSV and JSON files
@@ -71,7 +71,7 @@ def generate_hard_instance(k: int, m: int, x: float = 0.9) -> List[float]:
 
 def compute_optimal_beta(k: int) -> float:
     """
-    Compute the worst-case optimal parameter β* for A1 and TopTwoTS.
+    Compute the worst-case parameter β* for A1 and TopTwoTS.
     
     Formula: β* = (1 + sqrt(k-1)) / (1 + 3*sqrt(k-1))
     
@@ -79,7 +79,7 @@ def compute_optimal_beta(k: int) -> float:
         k: Total number of arms
     
     Returns:
-        Optimal beta parameter
+        Worst-case beta parameter
     """
     sqrt_k_minus_1 = math.sqrt(k - 1)
     numerator = 1 + sqrt_k_minus_1
@@ -168,7 +168,7 @@ def run_single_replication(
         result = algorithms.run_a1_sampling(
             rng, k, m, budget, sigma, beta_top=0.5, true_means=true_means, log_every=log_every
         )
-    elif policy_name == "A1 (Optimal)":
+    elif policy_name == "A1 (SqrtK)":
         result = algorithms.run_a1_sampling(
             rng, k, m, budget, sigma, beta_top=beta, true_means=true_means, log_every=log_every
         )
@@ -176,7 +176,7 @@ def run_single_replication(
         result = algorithms.run_toptwo_ts(
             rng, k, m, budget, sigma, beta=0.5, true_means=true_means, log_every=log_every
         )
-    elif policy_name == "TopTwoTS (Optimal)":
+    elif policy_name == "TopTwoTS (SqrtK)":
         result = algorithms.run_toptwo_ts(
             rng, k, m, budget, sigma, beta=beta, true_means=true_means, log_every=log_every
         )
@@ -200,9 +200,9 @@ def generate_figure1_learning_curve(trajectory_data: Dict, policies: List[str]) 
         "Uniform": "#1f77b4",
         "Thompson Sampling": "#ff7f0e",
         "A1 (Standard)": "#2ca02c",
-        "A1 (Optimal)": "#d62728",
+        "A1 (SqrtK)": "#d62728",
         "TopTwoTS (Standard)": "#9467bd",
-        "TopTwoTS (Optimal)": "#8c564b",
+        "TopTwoTS (SqrtK)": "#8c564b",
     }
     
     for policy_name in policies:
@@ -240,10 +240,10 @@ def generate_figure2_allocation_efficiency(summary_data: List[Dict]) -> None:
     Type: Grouped Bar Chart
     Groups: Best Arm, Distractor Arms, Noise Arms
     Y-Axis: Average Sample Count
-    Content: Bars for TS, A1 (Standard), A1 (Optimal)
+    Content: Bars for TS, A1 (Standard), A1 (SqrtK)
     """
     # Filter to only the policies we want to show
-    policies_to_show = ["Thompson Sampling", "A1 (Standard)", "A1 (Optimal)"]
+    policies_to_show = ["Thompson Sampling", "A1 (Standard)", "A1 (SqrtK)"]
     filtered_data = [row for row in summary_data if row["policy"] in policies_to_show]
     
     if not filtered_data:
@@ -296,7 +296,7 @@ def generate_figure3_posterior_evolution(
     Y-Axis: Posterior probability P(Arm i = Best)
     Content: Traces for the Best Arm and one Distractor Arm
     """
-    # Run a single replication of A1 (Optimal) to get posterior evolution
+    # Run a single replication of A1 (SqrtK) to get posterior evolution
     rng = np.random.default_rng(seed)
     best_arm = arm_groups["best"][0]
     distractor_arm = arm_groups["distractors"][0] if arm_groups["distractors"] else None
@@ -374,7 +374,7 @@ def generate_figure3_posterior_evolution(
     
     plt.xlabel("Time $t$", fontsize=12)
     plt.ylabel("Posterior Probability $P(\\text{Arm } i = \\text{Best})$", fontsize=12)
-    plt.title("Posterior Evolution: Confidence Accumulation (A1 Optimal, Single Path)", fontsize=14, fontweight="bold")
+    plt.title("Posterior Evolution: Confidence Accumulation (A1 SqrtK, Single Path)", fontsize=14, fontweight="bold")
     plt.legend(fontsize=10)
     plt.grid(True, alpha=0.3)
     plt.xlim(left=0)
@@ -420,9 +420,9 @@ def run_experiments(
         "Uniform",
         "Thompson Sampling",
         "A1 (Standard)",
-        "A1 (Optimal)",
+        "A1 (SqrtK)",
         "TopTwoTS (Standard)",
-        "TopTwoTS (Optimal)",
+        "TopTwoTS (SqrtK)",
     ]
     
     print(f"Running experiments with configuration:")
@@ -446,7 +446,7 @@ def run_experiments(
         
         for policy_name in policies:
             # Determine beta parameter
-            if "Optimal" in policy_name:
+            if "SqrtK" in policy_name:
                 beta = beta_optimal
             elif "Standard" in policy_name:
                 beta = 0.5
