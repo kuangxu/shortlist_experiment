@@ -15,12 +15,18 @@ import argparse
 import csv
 import json
 import math
+import os
 from typing import Dict, List, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
 
 import algorithms
+try:
+    import analyze_results
+    ANALYZE_AVAILABLE = True
+except ImportError:
+    ANALYZE_AVAILABLE = False
 
 # ============================================================================
 # QUICK TESTING CONFIGURATION
@@ -38,7 +44,7 @@ DEFAULT_CONFIG = {
     "m": 10,               # Shortlist size
     "budget": 1000,        # Total pulls (including warm start)
     "sigma_sq": 1.0,       # Known variance of rewards
-    "replications": 1000,  # Number of experiment replications (reduce for quick testing, e.g., 10-100)
+    "replications": 2000,  # Number of experiment replications (reduce for quick testing, e.g., 10-100)
     "seed": 123,           # Random seed for reproducibility
     "log_every": 10,       # Log trajectory data every N steps (0 to disable)
     "x": 0.9,              # Difficulty parameter for hard instance (distractor arm mean)
@@ -240,26 +246,22 @@ def generate_figure2_allocation_efficiency(summary_data: List[Dict]) -> None:
     Type: Grouped Bar Chart
     Groups: Best Arm, Distractor Arms, Noise Arms
     Y-Axis: Average Sample Count
-    Content: Bars for TS, A1 (Standard), A1 (SqrtK)
+    Content: Bars for ALL 6 policies
     """
-    # Filter to only the policies we want to show
-    policies_to_show = ["Thompson Sampling", "A1 (Standard)", "A1 (SqrtK)"]
-    filtered_data = [row for row in summary_data if row["policy"] in policies_to_show]
+    # Show all policies
+    policies = [row["policy"] for row in summary_data]
+    best_pulls = [row["best_arm_pulls"] for row in summary_data]
+    distractor_pulls = [row["distractor_pulls"] for row in summary_data]
+    noise_pulls = [row["noise_pulls"] for row in summary_data]
     
-    if not filtered_data:
-        print("  ⚠ Figure 2: No data for selected policies")
+    if not policies:
+        print("  ⚠ Figure 2: No data available")
         return
-    
-    # Prepare data
-    policies = [row["policy"] for row in filtered_data]
-    best_pulls = [row["best_arm_pulls"] for row in filtered_data]
-    distractor_pulls = [row["distractor_pulls"] for row in filtered_data]
-    noise_pulls = [row["noise_pulls"] for row in filtered_data]
     
     x = np.arange(len(policies))
     width = 0.25
     
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(12, 6))
     
     bars1 = ax.bar(x - width, best_pulls, width, label="Best Arm", color="#2ca02c")
     bars2 = ax.bar(x, distractor_pulls, width, label="Distractor Arms", color="#ff7f0e")
@@ -267,7 +269,7 @@ def generate_figure2_allocation_efficiency(summary_data: List[Dict]) -> None:
     
     ax.set_xlabel("Policy", fontsize=12)
     ax.set_ylabel("Average Sample Count", fontsize=12)
-    ax.set_title("Allocation Efficiency: Sample Distribution by Arm Group", fontsize=14, fontweight="bold")
+    ax.set_title("Allocation Efficiency: Sample Distribution by Arm Group (All Policies)", fontsize=14, fontweight="bold")
     ax.set_xticks(x)
     ax.set_xticklabels(policies, rotation=15, ha="right")
     ax.legend(fontsize=10)
@@ -394,6 +396,8 @@ def run_experiments(
     seed: int = 123,
     log_every: int = 10,
     x: float = 0.9,
+    data_dir: str = "data",
+    simulate_only: bool = False,
 ) -> None:
     """
     Run all experiments according to the plan in detailed_exp_plan.md.
@@ -407,7 +411,11 @@ def run_experiments(
         seed: Random seed
         log_every: Log trajectory every N steps
         x: Difficulty parameter for hard instance
+        data_dir: Directory to save data files
+        simulate_only: If True, skip plotting and only save data
     """
+    # Create data directory if it doesn't exist
+    os.makedirs(data_dir, exist_ok=True)
     sigma = math.sqrt(sigma_sq)
     beta_optimal = compute_optimal_beta(k)
     
@@ -499,9 +507,28 @@ def run_experiments(
             "noise_pulls": avg_allocations["noise"],
         })
     
+    # Save configuration metadata
+    config_data = {
+        "k": k,
+        "m": m,
+        "budget": budget,
+        "sigma_sq": sigma_sq,
+        "replications": replications,
+        "seed": seed,
+        "log_every": log_every,
+        "x": x,
+        "beta_optimal": beta_optimal,
+        "policies": policies,
+    }
+    config_path = os.path.join(data_dir, "config.json")
+    print(f"Writing {config_path}...")
+    with open(config_path, "w") as f:
+        json.dump(config_data, f, indent=2)
+    
     # Write results_summary.csv
-    print("Writing results_summary.csv...")
-    with open("results_summary.csv", "w", newline="") as f:
+    summary_path = os.path.join(data_dir, "results_summary.csv")
+    print(f"Writing {summary_path}...")
+    with open(summary_path, "w", newline="") as f:
         writer = csv.DictWriter(
             f,
             fieldnames=[
@@ -562,11 +589,14 @@ def run_experiments(
             "avg_regret": [float(x) for x in avg_regrets],
         }
     
-    with open("trajectory_data.json", "w") as f:
+    trajectory_path = os.path.join(data_dir, "trajectory_data.json")
+    print(f"Writing {trajectory_path}...")
+    with open(trajectory_path, "w") as f:
         json.dump(trajectory_data, f, indent=2)
     
     # Write allocation_data.csv
-    print("Writing allocation_data.csv...")
+    allocation_path = os.path.join(data_dir, "allocation_data.csv")
+    print(f"Writing {allocation_path}...")
     allocation_rows = []
     for policy_name in policies:
         for group_name in ["best", "distractors", "noise"]:
@@ -580,43 +610,66 @@ def run_experiments(
                 "std_pulls": std_count,
             })
     
-    with open("allocation_data.csv", "w", newline="") as f:
+    with open(allocation_path, "w", newline="") as f:
         writer = csv.DictWriter(
             f, fieldnames=["policy", "arm_group", "avg_pulls", "std_pulls"]
         )
         writer.writeheader()
         writer.writerows(allocation_rows)
     
-    # Print summary
-    print("\n" + "=" * 80)
-    print("SUMMARY")
-    print("=" * 80)
-    print(f"{'Policy':<25} {'Success Rate':>15} {'Avg Regret':>15} {'Best Pulls':>15}")
-    print("-" * 80)
-    for row in summary_data:
-        print(
-            f"{row['policy']:<25} "
-            f"{row['success_rate']:>14.3%} "
-            f"{row['avg_regret']:>15.4f} "
-            f"{row['best_arm_pulls']:>15.2f}"
-        )
-    print("=" * 80)
-    print("\nGenerating plots...")
-    
-    # Generate figures
-    generate_figure1_learning_curve(trajectory_data, policies)
-    generate_figure2_allocation_efficiency(summary_data)
-    generate_figure3_posterior_evolution(
-        k, m, budget, sigma, true_means, arm_groups, beta_optimal, seed + 9999
-    )
-    
-    print("\nResults written to:")
+    print(f"\nResults written to {data_dir}/:")
+    print("  - config.json")
     print("  - results_summary.csv")
     print("  - trajectory_data.json")
     print("  - allocation_data.csv")
-    print("  - figure1_learning_curve.png")
-    print("  - figure2_allocation_efficiency.png")
-    print("  - figure3_posterior_evolution.png")
+    
+    if not simulate_only:
+        print("\nRunning analysis and generating plots...")
+        if ANALYZE_AVAILABLE:
+            # Use analyze_results.py for consistent plotting and summary
+            analyze_results.analyze_results(data_dir=data_dir, output_dir=".", skip_summary=False)
+        else:
+            # Fallback to old plotting functions if analyze_results is not available
+            # Print summary first
+            print("\n" + "=" * 80)
+            print("SUMMARY")
+            print("=" * 80)
+            print(f"{'Policy':<25} {'Success Rate':>15} {'Avg Regret':>15} {'Best Pulls':>15}")
+            print("-" * 80)
+            for row in summary_data:
+                print(
+                    f"{row['policy']:<25} "
+                    f"{row['success_rate']:>14.3%} "
+                    f"{row['avg_regret']:>15.4f} "
+                    f"{row['best_arm_pulls']:>15.2f}"
+                )
+            print("=" * 80)
+            print("\nGenerating plots...")
+            generate_figure1_learning_curve(trajectory_data, policies)
+            generate_figure2_allocation_efficiency(summary_data)
+            generate_figure3_posterior_evolution(
+                k, m, budget, sigma, true_means, arm_groups, beta_optimal, seed + 9999
+            )
+            print("  - figure1_learning_curve.png")
+            print("  - figure2_allocation_efficiency.png")
+            print("  - figure3_posterior_evolution.png")
+    else:
+        # Print summary when in simulate-only mode
+        print("\n" + "=" * 80)
+        print("SUMMARY")
+        print("=" * 80)
+        print(f"{'Policy':<25} {'Success Rate':>15} {'Avg Regret':>15} {'Best Pulls':>15}")
+        print("-" * 80)
+        for row in summary_data:
+            print(
+                f"{row['policy']:<25} "
+                f"{row['success_rate']:>14.3%} "
+                f"{row['avg_regret']:>15.4f} "
+                f"{row['best_arm_pulls']:>15.2f}"
+            )
+        print("=" * 80)
+        print("\nSimulation-only mode: skipping plot generation.")
+        print("Run 'python analyze_results.py' to generate plots from saved data.")
 
 
 def main() -> None:
@@ -674,6 +727,17 @@ Example for quick testing (fewer replications):
         default=DEFAULT_CONFIG["x"],
         help="Difficulty parameter for hard instance (distractor arm mean)",
     )
+    parser.add_argument(
+        "--data-dir",
+        type=str,
+        default="data",
+        help="Directory to save data files (default: data/)",
+    )
+    parser.add_argument(
+        "--simulate-only",
+        action="store_true",
+        help="Run simulation only, skip plot generation",
+    )
     
     args = parser.parse_args()
     
@@ -694,6 +758,8 @@ Example for quick testing (fewer replications):
         seed=args.seed,
         log_every=args.log_every,
         x=args.x,
+        data_dir=args.data_dir,
+        simulate_only=args.simulate_only,
     )
 
 

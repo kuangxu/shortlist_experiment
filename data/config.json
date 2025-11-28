@@ -1,0 +1,19 @@
+{
+  "k": 100,
+  "m": 10,
+  "budget": 1000,
+  "sigma_sq": 1.0,
+  "replications": 2000,
+  "seed": 123,
+  "log_every": 10,
+  "x": 0.9,
+  "beta_optimal": 0.3549435379125083,
+  "policies": [
+    "Uniform",
+    "Thompson Sampling",
+    "A1 (Standard)",
+    "A1 (SqrtK)",
+    "TopTwoTS (Standard)",
+    "TopTwoTS (SqrtK)"
+  ]
+}
