@@ -236,23 +236,23 @@ def track_posterior_evolution(
         
         # Run algorithm step based on algorithm_name
         if algorithm_name == "A1 (SqrtK)":
-            # A1 algorithm step
-            samples1 = rng.normal(loc=posterior_means, scale=np.sqrt(posterior_variances))
-            shortlist = np.argsort(samples1)[-m:][::-1]
-            shortlist_best = shortlist[0]
-            
-            # Find challenger
-            while True:
-                challenger_samples = rng.normal(loc=posterior_means, scale=np.sqrt(posterior_variances))
-                challenger = int(np.argmax(challenger_samples))
-                if challenger not in shortlist:
-                    break
-            
-            # Choose arm
-            if rng.uniform() < beta_optimal:
-                chosen_arm = int(shortlist_best)
-            else:
-                chosen_arm = challenger
+        # A1 algorithm step
+        samples1 = rng.normal(loc=posterior_means, scale=np.sqrt(posterior_variances))
+        shortlist = np.argsort(samples1)[-m:][::-1]
+        shortlist_best = shortlist[0]
+        
+        # Find challenger
+        while True:
+            challenger_samples = rng.normal(loc=posterior_means, scale=np.sqrt(posterior_variances))
+            challenger = int(np.argmax(challenger_samples))
+            if challenger not in shortlist:
+                break
+        
+        # Choose arm
+        if rng.uniform() < beta_optimal:
+            chosen_arm = int(shortlist_best)
+        else:
+            chosen_arm = challenger
                 
         elif algorithm_name == "Thompson Sampling":
             # Thompson sampling: sample from posterior, pick best
@@ -349,14 +349,14 @@ def generate_figure3_posterior_evolution(
     # Plot distractor arm probabilities for each algorithm
     for alg_name in algorithms_to_run:
         data = results[alg_name]
-        plt.plot(
+    plt.plot(
             data["time_steps"],
             data["distractor_arm_probs"],
             label=f"{alg_name} - Distractor Arm (index {distractor_arm})",
-            linewidth=2,
+        linewidth=2,
             color=algorithm_colors[alg_name]["distractor"],
             linestyle="--",
-        )
+    )
     
     # Find maximum posterior probability across all algorithms and arm types
     max_prob = 0.0
@@ -380,6 +380,78 @@ def generate_figure3_posterior_evolution(
     print(f"  ✓ Figure 3 saved: {output_path}")
 
 
+def generate_figure4_difficulty_sweep(
+    data_dir: str,
+    output_path: str = "figure4_difficulty_sweep.png",
+) -> None:
+    """
+    Generate Figure 4: Difficulty Sweep Analysis.
+    
+    Reads saved difficulty sweep data and plots success probability vs. distractor level
+    for A1 (Standard), TopTwoTS (Standard), and Thompson Sampling.
+    
+    Args:
+        data_dir: Directory containing difficulty_sweep.json
+        output_path: Path to save the figure
+    """
+    sweep_path = os.path.join(data_dir, "difficulty_sweep.json")
+    if not os.path.exists(sweep_path):
+        print(f"  ⚠ Figure 4: Difficulty sweep data file '{sweep_path}' not found.")
+        print(f"     Run 'python run_experiment.py --run-sweep' to generate the data.")
+        return
+    
+    # Load sweep data
+    with open(sweep_path, "r") as f:
+        sweep_data = json.load(f)
+    
+    x_values = np.array(sweep_data["x_values"])
+    results = sweep_data["results"]
+    x_min = sweep_data["x_min"]
+    x_max = sweep_data["x_max"]
+    
+    # Algorithms to plot (in desired order)
+    algorithms_to_test = [
+        "A1 (Standard)",
+        "TopTwoTS (Standard)",
+        "Thompson Sampling",
+    ]
+    
+    print(f"  Loading difficulty sweep data: {len(x_values)} x values")
+    
+    # Plot results
+    plt.figure(figsize=(10, 6))
+    
+    colors = {
+        "A1 (Standard)": "#2ca02c",
+        "TopTwoTS (Standard)": "#9467bd",
+        "Thompson Sampling": "#ff7f0e",
+    }
+    
+    for alg_name in algorithms_to_test:
+        if alg_name in results:
+            plt.plot(
+                x_values,
+                results[alg_name],
+                label=alg_name,
+                linewidth=2,
+                color=colors[alg_name],
+                marker="o",
+                markersize=4,
+            )
+    
+    plt.xlabel("Distractor Arm Mean ($x$)", fontsize=12)
+    plt.ylabel("Success Probability", fontsize=12)
+    plt.title("Success Probability vs. Difficulty Level", fontsize=14, fontweight="bold")
+    plt.legend(fontsize=10, loc="best")
+    plt.grid(True, alpha=0.3)
+    plt.xlim(x_min - 0.02, x_max + 0.02)
+    plt.ylim(-0.02, 1.02)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"  ✓ Figure 4 saved: {output_path}")
+
+
 def print_summary(summary_data: List[Dict]) -> None:
     """Print a formatted summary table of results."""
     print("\n" + "=" * 80)
@@ -399,7 +471,7 @@ def print_summary(summary_data: List[Dict]) -> None:
     print("=" * 110)
 
 
-def analyze_results(data_dir: str = "data", output_dir: str = ".", skip_summary: bool = False) -> None:
+def analyze_results(data_dir: str = "data", output_dir: str = ".", skip_summary: bool = False, include_sweep: bool = True) -> None:
     """
     Read simulation data and generate plots and summaries.
     
@@ -407,6 +479,7 @@ def analyze_results(data_dir: str = "data", output_dir: str = ".", skip_summary:
         data_dir: Directory containing simulation data files
         output_dir: Directory to save generated plots
         skip_summary: If True, skip printing the summary table (useful when called from run_experiment.py)
+        include_sweep: If True, generate Figure 4 (difficulty sweep) - reads from saved data if available
     """
     # Check if data directory exists
     if not os.path.exists(data_dir):
@@ -487,10 +560,18 @@ def analyze_results(data_dir: str = "data", output_dir: str = ".", skip_summary:
         k, m, budget, sigma, true_means, arm_groups, beta_optimal, seed + 9999, figure3_path
     )
     
+    # Figure 4: Difficulty Sweep (reads from saved data)
+    if include_sweep:
+        print()
+        figure4_path = os.path.join(output_dir, "figure4_difficulty_sweep.png")
+        generate_figure4_difficulty_sweep(data_dir, figure4_path)
+    
     print(f"\nResults written to {output_dir}/:")
     print("  - figure1_learning_curve.png")
     print("  - figure2_allocation_efficiency.png")
     print("  - figure3_posterior_evolution.png")
+    if include_sweep:
+        print("  - figure4_difficulty_sweep.png")
 
 
 def main() -> None:

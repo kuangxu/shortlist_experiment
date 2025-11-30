@@ -387,6 +387,120 @@ def generate_figure3_posterior_evolution(
     print("  ✓ Figure 3 saved: figure3_posterior_evolution.png")
 
 
+def run_difficulty_sweep(
+    k: int = 100,
+    m: int = 10,
+    budget: int = 1000,
+    sigma_sq: float = 1.0,
+    base_seed: int = 123,
+    data_dir: str = "data",
+    x_min: float = 0.1,
+    x_max: float = 0.95,
+    x_step: float = 0.05,
+    replications: int = 200,
+) -> None:
+    """
+    Run difficulty sweep experiment: vary distractor level x and compare algorithms.
+    
+    Saves results to data/difficulty_sweep.json for later plotting.
+    
+    Args:
+        k: Number of arms
+        m: Shortlist size
+        budget: Total budget
+        sigma_sq: Noise variance
+        base_seed: Base random seed for reproducibility
+        data_dir: Directory to save data files
+        x_min: Minimum distractor level
+        x_max: Maximum distractor level
+        x_step: Step size for x values
+        replications: Number of replications per x value
+    """
+    sigma = math.sqrt(sigma_sq)
+    
+    # Generate x values
+    x_values = np.arange(x_min, x_max + x_step / 2, x_step).tolist()
+    
+    # Algorithms to compare
+    algorithms_to_test = [
+        "A1 (Standard)",
+        "TopTwoTS (Standard)",
+        "Thompson Sampling",
+    ]
+    
+    # Store results: {algorithm: [success_rates]} where list index corresponds to x_values index
+    results = {alg: [] for alg in algorithms_to_test}
+    
+    print(f"\nRunning difficulty sweep experiment:")
+    print(f"  x from {x_min:.2f} to {x_max:.2f} (step {x_step:.2f})")
+    print(f"  {len(x_values)} x values, {replications} replications each")
+    print(f"  Algorithms: {', '.join(algorithms_to_test)}")
+    print()
+    
+    # For each x value
+    for x_idx, x in enumerate(x_values):
+        # Generate hard instance with this x
+        true_means = generate_hard_instance(k, m, x)
+        
+        # For each algorithm
+        for alg_idx, alg_name in enumerate(algorithms_to_test):
+            # Use deterministic seed: base_seed + x_index * 1000 + alg_index * 100
+            seed = base_seed + 50000 + x_idx * 1000 + alg_idx * 100
+            
+            # Run replications
+            successes = 0
+            for rep in range(replications):
+                # Use seed + rep to ensure each replication is independent but reproducible
+                rng = np.random.default_rng(seed + rep)
+                
+                # Run algorithm
+                if alg_name == "A1 (Standard)":
+                    result = algorithms.run_a1_sampling(
+                        rng, k, m, budget, sigma, beta_top=0.5, true_means=true_means, log_every=0
+                    )
+                elif alg_name == "TopTwoTS (Standard)":
+                    result = algorithms.run_toptwo_ts(
+                        rng, k, m, budget, sigma, beta=0.5, true_means=true_means, log_every=0
+                    )
+                elif alg_name == "Thompson Sampling":
+                    result = algorithms.run_thompson_sampling(
+                        rng, k, m, budget, sigma, true_means=true_means, log_every=0
+                    )
+                else:
+                    raise ValueError(f"Unknown algorithm: {alg_name}")
+                
+                if result["success"]:
+                    successes += 1
+            
+            success_rate = successes / replications
+            results[alg_name].append(success_rate)
+        
+        # Progress indicator
+        if (x_idx + 1) % 5 == 0 or x_idx == len(x_values) - 1:
+            print(f"  Completed {x_idx + 1}/{len(x_values)} x values...")
+    
+    # Save results
+    sweep_data = {
+        "k": k,
+        "m": m,
+        "budget": budget,
+        "sigma_sq": sigma_sq,
+        "base_seed": base_seed,
+        "x_min": x_min,
+        "x_max": x_max,
+        "x_step": x_step,
+        "replications": replications,
+        "x_values": x_values,
+        "results": results,
+    }
+    
+    sweep_path = os.path.join(data_dir, "difficulty_sweep.json")
+    with open(sweep_path, "w") as f:
+        json.dump(sweep_data, f, indent=2)
+    
+    print(f"\n  ✓ Difficulty sweep data saved: {sweep_path}")
+
+
 def run_experiments(
     k: int = 100,
     m: int = 10,
@@ -398,6 +512,7 @@ def run_experiments(
     x: float = 0.9,
     data_dir: str = "data",
     simulate_only: bool = False,
+    run_sweep: bool = False,
 ) -> None:
     """
     Run all experiments according to the plan in detailed_exp_plan.md.
@@ -623,6 +738,17 @@ def run_experiments(
     print("  - trajectory_data.json")
     print("  - allocation_data.csv")
     
+    # Run difficulty sweep if requested
+    if run_sweep:
+        run_difficulty_sweep(
+            k=k,
+            m=m,
+            budget=budget,
+            sigma_sq=sigma_sq,
+            base_seed=seed,
+            data_dir=data_dir,
+        )
+    
     if not simulate_only:
         print("\nRunning analysis and generating plots...")
         if ANALYZE_AVAILABLE:
@@ -738,6 +864,11 @@ Example for quick testing (fewer replications):
         action="store_true",
         help="Run simulation only, skip plot generation",
     )
+    parser.add_argument(
+        "--run-sweep",
+        action="store_true",
+        help="Also run difficulty sweep experiment (vary x from 0.1 to 0.95)",
+    )
     
     args = parser.parse_args()
     
@@ -760,6 +891,7 @@ Example for quick testing (fewer replications):
         x=args.x,
         data_dir=args.data_dir,
         simulate_only=args.simulate_only,
+        run_sweep=args.run_sweep,
     )
 
 
