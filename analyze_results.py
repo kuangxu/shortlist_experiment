@@ -4,8 +4,38 @@ Analysis and plotting script for shortlist selection experiments.
 This script reads simulation data from the data/ folder and generates plots,
 summaries, and visualizations.
 
+Prerequisites:
+    Run the simulation first using run_experiment.py to generate the required
+    data files in the data/ directory.
+
+Required Input Files (in data/ directory):
+    - config.json: Experiment configuration (k, m, budget, etc.)
+    - results_summary.csv: Summary statistics for each policy
+    - trajectory_data.json: Time-series data for learning curves (optional)
+    - difficulty_sweep.json: Difficulty sweep results (optional, for Figure 4)
+
 Usage:
-    python analyze_results.py [--data-dir DATA_DIR]
+    Basic usage (uses default data/ directory and current directory for output):
+        python analyze_results.py
+    
+    Specify custom data directory:
+        python analyze_results.py --data-dir /path/to/data
+    
+    Specify custom output directory for plots:
+        python analyze_results.py --data-dir data --output-dir /path/to/output
+
+Command-line Options:
+    --data-dir DIR     Directory containing simulation data files (default: data/)
+    --output-dir DIR   Directory to save generated plots (default: current directory)
+
+Output Files:
+    - figure1_learning_curve.png: Success probability over time for each policy
+    - figure2_allocation_efficiency.png: Sample distribution by arm group
+    - figure3_posterior_evolution.png: Posterior probability evolution over time
+    - figure4_difficulty_sweep.png: Success probability vs. difficulty level (if data available)
+
+The script also prints a summary table to stdout with success rates, regret,
+and allocation statistics for each policy.
 """
 
 import argparse
@@ -236,23 +266,23 @@ def track_posterior_evolution(
         
         # Run algorithm step based on algorithm_name
         if algorithm_name == "A1 (SqrtK)":
-        # A1 algorithm step
-        samples1 = rng.normal(loc=posterior_means, scale=np.sqrt(posterior_variances))
-        shortlist = np.argsort(samples1)[-m:][::-1]
-        shortlist_best = shortlist[0]
-        
-        # Find challenger
-        while True:
-            challenger_samples = rng.normal(loc=posterior_means, scale=np.sqrt(posterior_variances))
-            challenger = int(np.argmax(challenger_samples))
-            if challenger not in shortlist:
-                break
-        
-        # Choose arm
-        if rng.uniform() < beta_optimal:
-            chosen_arm = int(shortlist_best)
-        else:
-            chosen_arm = challenger
+            # A1 algorithm step
+            samples1 = rng.normal(loc=posterior_means, scale=np.sqrt(posterior_variances))
+            shortlist = np.argsort(samples1)[-m:][::-1]
+            shortlist_best = shortlist[0]
+            
+            # Find challenger
+            while True:
+                challenger_samples = rng.normal(loc=posterior_means, scale=np.sqrt(posterior_variances))
+                challenger = int(np.argmax(challenger_samples))
+                if challenger not in shortlist:
+                    break
+            
+            # Choose arm
+            if rng.uniform() < beta_optimal:
+                chosen_arm = int(shortlist_best)
+            else:
+                chosen_arm = challenger
                 
         elif algorithm_name == "Thompson Sampling":
             # Thompson sampling: sample from posterior, pick best
@@ -383,22 +413,28 @@ def generate_figure3_posterior_evolution(
 def generate_figure4_difficulty_sweep(
     data_dir: str,
     output_path: str = "figure4_difficulty_sweep.png",
-) -> None:
+) -> bool:
     """
     Generate Figure 4: Difficulty Sweep Analysis.
     
-    Reads saved difficulty sweep data and plots success probability vs. distractor level
+    Creates two side-by-side plots:
+    1. Failure probability (1 - success probability) vs. distractor level
+    2. Simple regret vs. distractor level
+    
     for A1 (Standard), TopTwoTS (Standard), and Thompson Sampling.
     
     Args:
         data_dir: Directory containing difficulty_sweep.json
         output_path: Path to save the figure
+    
+    Returns:
+        True if figure was successfully created, False otherwise
     """
     sweep_path = os.path.join(data_dir, "difficulty_sweep.json")
     if not os.path.exists(sweep_path):
         print(f"  ⚠ Figure 4: Difficulty sweep data file '{sweep_path}' not found.")
-        print(f"     Run 'python run_experiment.py --run-sweep' to generate the data.")
-        return
+        print(f"     Run 'python run_experiment.py --run-sweep' or 'python run_experiment.py --sweep-only' to generate the data.")
+        return False
     
     # Load sweep data
     with open(sweep_path, "r") as f:
@@ -418,8 +454,8 @@ def generate_figure4_difficulty_sweep(
     
     print(f"  Loading difficulty sweep data: {len(x_values)} x values")
     
-    # Plot results
-    plt.figure(figsize=(10, 6))
+    # Create figure with two subplots side by side
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
     
     colors = {
         "A1 (Standard)": "#2ca02c",
@@ -427,29 +463,118 @@ def generate_figure4_difficulty_sweep(
         "Thompson Sampling": "#ff7f0e",
     }
     
+    # Collect data for both plots
+    all_failure_probs = []
+    all_regrets = []
+    has_regret_data = False
+    
     for alg_name in algorithms_to_test:
         if alg_name in results:
-            plt.plot(
+            # Check if it's the new format (dictionary) or old format (list)
+            if isinstance(results[alg_name], dict):
+                success_rates = results[alg_name]["success_rates"]
+                avg_regrets = results[alg_name].get("avg_regrets", None)
+                has_regret_data = avg_regrets is not None
+            else:
+                # Old format: just a list of success rates
+                success_rates = results[alg_name]
+                avg_regrets = None
+                has_regret_data = False
+            
+            # Compute failure probabilities (1 - success_rate)
+            failure_probs = [1.0 - sr for sr in success_rates]
+            all_failure_probs.extend(failure_probs)
+            
+            # Plot failure probability (left plot)
+            ax1.plot(
                 x_values,
-                results[alg_name],
+                failure_probs,
                 label=alg_name,
                 linewidth=2,
                 color=colors[alg_name],
                 marker="o",
                 markersize=4,
             )
+            
+            # Plot regret (right plot) if available
+            if has_regret_data and avg_regrets:
+                all_regrets.extend(avg_regrets)
+                ax2.plot(
+                    x_values,
+                    avg_regrets,
+                    label=alg_name,
+                    linewidth=2,
+                    color=colors[alg_name],
+                    marker="o",
+                    markersize=4,
+                )
     
-    plt.xlabel("Distractor Arm Mean ($x$)", fontsize=12)
-    plt.ylabel("Success Probability", fontsize=12)
-    plt.title("Success Probability vs. Difficulty Level", fontsize=14, fontweight="bold")
-    plt.legend(fontsize=10, loc="best")
-    plt.grid(True, alpha=0.3)
-    plt.xlim(x_min - 0.02, x_max + 0.02)
-    plt.ylim(-0.02, 1.02)
+    # Set up left plot: Failure Probability
+    if all_failure_probs:
+        y_min = min(all_failure_probs)
+        y_max = max(all_failure_probs)
+        y_range = y_max - y_min
+        
+        # Add 5% margin on each side, but ensure we don't go below 0 or above 1
+        margin = max(y_range * 0.05, 0.02)
+        y_lim_min = max(0.0, y_min - margin)
+        y_lim_max = min(1.0, y_max + margin)
+        
+        # If range is very small, ensure we have some visible range
+        if y_lim_max - y_lim_min < 0.1:
+            center = (y_min + y_max) / 2
+            y_lim_min = max(0.0, center - 0.05)
+            y_lim_max = min(1.0, center + 0.05)
+    else:
+        y_lim_min = -0.02
+        y_lim_max = 1.02
+    
+    ax1.set_xlabel("Distractor Arm Mean ($x$)", fontsize=12)
+    ax1.set_ylabel("Failure Probability", fontsize=12)
+    ax1.set_title("Failure Probability vs. Difficulty Level", fontsize=14, fontweight="bold")
+    ax1.legend(fontsize=10, loc="best")
+    ax1.grid(True, alpha=0.3)
+    ax1.set_xlim(x_min - 0.02, x_max + 0.02)
+    ax1.set_ylim(y_lim_min, y_lim_max)
+    
+    # Set up right plot: Simple Regret
+    if has_regret_data and all_regrets:
+        y_min = min(all_regrets)
+        y_max = max(all_regrets)
+        y_range = y_max - y_min
+        
+        # Add 5% margin on each side
+        margin = max(y_range * 0.05, 0.01)
+        y_lim_min = max(0.0, y_min - margin)
+        y_lim_max = y_max + margin
+        
+        # If range is very small, ensure we have some visible range
+        if y_lim_max - y_lim_min < 0.01:
+            center = (y_min + y_max) / 2
+            y_lim_min = max(0.0, center - 0.005)
+            y_lim_max = center + 0.005
+    else:
+        # If no regret data, show a message
+        y_lim_min = 0.0
+        y_lim_max = 1.0
+        ax2.text(0.5, 0.5, "Regret data not available\n(Run with updated code)", 
+                ha="center", va="center", transform=ax2.transAxes, fontsize=12)
+    
+    ax2.set_xlabel("Distractor Arm Mean ($x$)", fontsize=12)
+    ax2.set_ylabel("Simple Regret", fontsize=12)
+    ax2.set_title("Simple Regret vs. Difficulty Level", fontsize=14, fontweight="bold")
+    if has_regret_data:
+        ax2.legend(fontsize=10, loc="best")
+    ax2.grid(True, alpha=0.3)
+    ax2.set_xlim(x_min - 0.02, x_max + 0.02)
+    if has_regret_data:
+        ax2.set_ylim(y_lim_min, y_lim_max)
+    
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"  ✓ Figure 4 saved: {output_path}")
+    return True
 
 
 def print_summary(summary_data: List[Dict]) -> None:
@@ -561,16 +686,17 @@ def analyze_results(data_dir: str = "data", output_dir: str = ".", skip_summary:
     )
     
     # Figure 4: Difficulty Sweep (reads from saved data)
+    figure4_created = False
     if include_sweep:
         print()
         figure4_path = os.path.join(output_dir, "figure4_difficulty_sweep.png")
-        generate_figure4_difficulty_sweep(data_dir, figure4_path)
+        figure4_created = generate_figure4_difficulty_sweep(data_dir, figure4_path)
     
     print(f"\nResults written to {output_dir}/:")
     print("  - figure1_learning_curve.png")
     print("  - figure2_allocation_efficiency.png")
     print("  - figure3_posterior_evolution.png")
-    if include_sweep:
+    if figure4_created:
         print("  - figure4_difficulty_sweep.png")
 
 

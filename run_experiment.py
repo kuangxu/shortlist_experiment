@@ -397,7 +397,7 @@ def run_difficulty_sweep(
     x_min: float = 0.1,
     x_max: float = 0.95,
     x_step: float = 0.05,
-    replications: int = 200,
+    replications: int = 500,
 ) -> None:
     """
     Run difficulty sweep experiment: vary distractor level x and compare algorithms.
@@ -428,8 +428,9 @@ def run_difficulty_sweep(
         "Thompson Sampling",
     ]
     
-    # Store results: {algorithm: [success_rates]} where list index corresponds to x_values index
-    results = {alg: [] for alg in algorithms_to_test}
+    # Store results: {algorithm: {"success_rates": [...], "avg_regrets": [...]}}
+    # where list index corresponds to x_values index
+    results = {alg: {"success_rates": [], "avg_regrets": []} for alg in algorithms_to_test}
     
     print(f"\nRunning difficulty sweep experiment:")
     print(f"  x from {x_min:.2f} to {x_max:.2f} (step {x_step:.2f})")
@@ -437,8 +438,13 @@ def run_difficulty_sweep(
     print(f"  Algorithms: {', '.join(algorithms_to_test)}")
     print()
     
+    total_combinations = len(x_values) * len(algorithms_to_test)
+    completed_combinations = 0
+    
     # For each x value
     for x_idx, x in enumerate(x_values):
+        print(f"  Processing x={x:.2f} ({x_idx + 1}/{len(x_values)})...")
+        
         # Generate hard instance with this x
         true_means = generate_hard_instance(k, m, x)
         
@@ -449,6 +455,7 @@ def run_difficulty_sweep(
             
             # Run replications
             successes = 0
+            regrets = []
             for rep in range(replications):
                 # Use seed + rep to ensure each replication is independent but reproducible
                 rng = np.random.default_rng(seed + rep)
@@ -471,13 +478,24 @@ def run_difficulty_sweep(
                 
                 if result["success"]:
                     successes += 1
+                
+                # Track regret
+                regrets.append(result["regret"])
+                
+                # Progress update for replications (every 50 or at milestones)
+                if replications >= 100 and (rep + 1) % 50 == 0:
+                    print(f"    {alg_name}: {rep + 1}/{replications} replications...")
             
             success_rate = successes / replications
-            results[alg_name].append(success_rate)
+            avg_regret = np.mean(regrets)
+            results[alg_name]["success_rates"].append(success_rate)
+            results[alg_name]["avg_regrets"].append(avg_regret)
+            completed_combinations += 1
+            
+            print(f"    {alg_name}: success rate = {success_rate:.3f}, avg regret = {avg_regret:.4f} ({completed_combinations}/{total_combinations} combinations completed)")
         
-        # Progress indicator
-        if (x_idx + 1) % 5 == 0 or x_idx == len(x_values) - 1:
-            print(f"  Completed {x_idx + 1}/{len(x_values)} x values...")
+        # Summary for this x value
+        print(f"  ✓ Completed x={x:.2f} ({x_idx + 1}/{len(x_values)} x values done)\n")
     
     # Save results
     sweep_data = {
@@ -513,6 +531,7 @@ def run_experiments(
     data_dir: str = "data",
     simulate_only: bool = False,
     run_sweep: bool = False,
+    sweep_only: bool = False,
 ) -> None:
     """
     Run all experiments according to the plan in detailed_exp_plan.md.
@@ -528,9 +547,25 @@ def run_experiments(
         x: Difficulty parameter for hard instance
         data_dir: Directory to save data files
         simulate_only: If True, skip plotting and only save data
+        run_sweep: If True, also run difficulty sweep after main experiments
+        sweep_only: If True, skip main experiments and only run difficulty sweep
     """
     # Create data directory if it doesn't exist
     os.makedirs(data_dir, exist_ok=True)
+    
+    # If sweep_only is True, run only the difficulty sweep and return
+    if sweep_only:
+        print("Running difficulty sweep only...")
+        run_difficulty_sweep(
+            k=k,
+            m=m,
+            budget=budget,
+            sigma_sq=sigma_sq,
+            base_seed=seed,
+            data_dir=data_dir,
+        )
+        return
+    
     sigma = math.sqrt(sigma_sq)
     beta_optimal = compute_optimal_beta(k)
     
@@ -869,16 +904,26 @@ Example for quick testing (fewer replications):
         action="store_true",
         help="Also run difficulty sweep experiment (vary x from 0.1 to 0.95)",
     )
+    parser.add_argument(
+        "--sweep-only",
+        action="store_true",
+        help="Run only the difficulty sweep experiment, skip main experiments",
+    )
     
     args = parser.parse_args()
     
-    # Validate arguments
-    if args.budget < args.k:
-        raise ValueError("--budget must be at least the number of arms to accommodate warm start.")
-    if args.m <= 0 or args.m > args.k:
-        raise ValueError("--m must satisfy 0 < m <= k.")
-    if args.replications <= 0:
-        raise ValueError("--replications must be positive.")
+    # Validate arguments (skip some validations if sweep_only is True)
+    if not args.sweep_only:
+        if args.budget < args.k:
+            raise ValueError("--budget must be at least the number of arms to accommodate warm start.")
+        if args.m <= 0 or args.m > args.k:
+            raise ValueError("--m must satisfy 0 < m <= k.")
+        if args.replications <= 0:
+            raise ValueError("--replications must be positive.")
+    else:
+        # Basic validations for sweep_only mode
+        if args.m <= 0 or args.m > args.k:
+            raise ValueError("--m must satisfy 0 < m <= k.")
     
     run_experiments(
         k=args.k,
@@ -892,6 +937,7 @@ Example for quick testing (fewer replications):
         data_dir=args.data_dir,
         simulate_only=args.simulate_only,
         run_sweep=args.run_sweep,
+        sweep_only=args.sweep_only,
     )
 
 
